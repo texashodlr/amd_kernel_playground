@@ -53,22 +53,27 @@ __global__ void hello_kernel(int* out) {
 }
 
 // HIP Timing Harness
-static float time_ms(const std::function<void()>& fn, int iters=100){
+static float time_ms(const std::function<void()>& fn, int iters = 200) {
   hipEvent_t start{}, stop{};
   HIP_CHECK(hipEventCreate(&start));
   HIP_CHECK(hipEventCreate(&stop));
 
   HIP_CHECK(hipDeviceSynchronize());
+
   HIP_CHECK(hipEventRecord(start, nullptr));
-  for (int i = 0; i < iters; ++i) fn();
+  for (int i = 0; i < iters; ++i) {
+    fn();
+  }
   HIP_CHECK(hipEventRecord(stop, nullptr));
   HIP_CHECK(hipEventSynchronize(stop));
 
-  float ms = 0.0f;
-  HIP_CHECK(hipEventElapsedTime(&ms, start, stop));
+  float ms_total = 0.0f;
+  HIP_CHECK(hipEventElapsedTime(&ms_total, start, stop));
+
   HIP_CHECK(hipEventDestroy(start));
   HIP_CHECK(hipEventDestroy(stop));
-  return ms / iters;
+
+  return ms_total / iters;
 }
 
 // Kernel #1: Pure bandwidth kernel
@@ -88,7 +93,9 @@ __global__ void fma_kernel(float* out, int n, int iters){
     float a = 1.000001f;
     float b = 0.000001f;
   #pragma unroll 4
-    for (int k = 0; k < iters; ++k) x = x * a + b;
+    for (int k = 0; k < iters; ++k){
+      x = x * a + b;
+    }
     out[i] = x;
   }
 }
@@ -197,7 +204,7 @@ static void bench_fma(int CUs){
       for (int bpcu: blocks_per_cu){
         int blocks = std::max(1, CUs * bpcu);
         auto fn = [&](){
-        hipLaunchKernelGGL(fma_kernel, dim3(blocks), dim3(tpb), 0, 0, d_a, d_b, N, iters);
+        hipLaunchKernelGGL(fma_kernel, dim3(blocks), dim3(tpb), 0, 0, d_out, N, iters);
       };
 
       float ms = time_ms(fn, 80);
