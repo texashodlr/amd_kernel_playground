@@ -35,7 +35,7 @@ static void print_device_props(int dev = 0){
   printf("               regsPerBlock: %d\n", prop.regsPerBlock);
   printf("         maxThreadsPerBlock: %d\n", prop.maxThreadsPerBlock);
   printf("maxThreadsPerMultiProcessor: %d\n", prop.maxThreadsPerMultiProcessor);
-  printf("             totalGlobalMem: %.2f GiB\n",gib((double))prop.totalGlobalMem);
+  printf("             totalGlobalMem: %.2f GiB\n",gib((double)prop.totalGlobalMem));
   printf("                  clockRate: %d kHz\n", prop.clockRate);
 
   // Device Query Section END
@@ -55,8 +55,8 @@ __global__ void hello_kernel(int* out) {
 // HIP Timing Harness
 static float time_ms(const std::function<void()>& fn, int iters=100){
   hipEvent_t start{}, stop{};
-  HIP_CHECK(hipEventCheck(&start));
-  HIP_CHECK(hipEventCheck(&stop));
+  HIP_CHECK(hipEventCreate(&start));
+  HIP_CHECK(hipEventCreate(&stop));
 
   HIP_CHECK(hipDeviceSynchronize());
   HIP_CHECK(hipEventRecord(start, nullptr));
@@ -66,8 +66,8 @@ static float time_ms(const std::function<void()>& fn, int iters=100){
 
   float ms = 0.0f;
   HIP_CHECK(hipEventElapsedTime(&ms, start, stop));
-  HIP_CHECK(hipEventCheck(start));
-  HIP_CHECK(hipEventCheck(stop));
+  HIP_CHECK(hipEventDestroy(start));
+  HIP_CHECK(hipEventDestroy(stop));
   return ms / iters;
 }
 
@@ -126,8 +126,8 @@ static void bench_copy(int CUs){
 
   float* d_a = nullptr;
   float* d_b = nullptr;
-  HIP_CHECK(malloc(&d_a, bytes));
-  HIP_CHECK(malloc(&d_b, bytes));
+  HIP_CHECK(hipMalloc(&d_a, bytes));
+  HIP_CHECK(hipMalloc(&d_b, bytes));
 
   //Initialization to allocate
   {
@@ -145,8 +145,8 @@ static void bench_copy(int CUs){
   std::printf("N = %d floats (%.2f GiB per buffer)\n", N, gib((double)bytes));
   std::printf("%10s %14s %14s\n", "TPB", "Blocks", "GB/s");
 
-  for (int tpb : block_sizes){
-    for (int bpcu : blocks_per_cu){
+  for (int tpb : block_sizes) {
+    for (int bpcu : blocks_per_cu) {
       int blocks  = std::max(1, CUs * bpcu);
       auto fn = [&](){
         hipLaunchKernelGGL(copy_kernel, dim3(blocks), dim3(tpb), 0, 0, d_a, d_b, N);
