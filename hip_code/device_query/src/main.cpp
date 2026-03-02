@@ -61,8 +61,8 @@ static float time_ms(const std::function<void()>& fn, int iters=100){
   HIP_CHECK(hipDeviceSynchronize());
   HIP_CHECK(hipEventRecord(start, nullptr));
   for (int i = 0; i < iters; ++i) fn();
-  HIP_CHECK(hipEventRecord(start, nullptr));
-  HIP_CHECK(hipDeviceSynchronize(stop));
+  HIP_CHECK(hipEventRecord(stop, nullptr));
+  HIP_CHECK(hipEventSynchronize(stop));
 
   float ms = 0.0f;
   HIP_CHECK(hipEventElapsedTime(&ms, start, stop));
