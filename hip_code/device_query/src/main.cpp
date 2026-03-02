@@ -36,7 +36,10 @@ static void print_device_props(int dev = 0){
   printf("         maxThreadsPerBlock: %d\n", prop.maxThreadsPerBlock);
   printf("maxThreadsPerMultiProcessor: %d\n", prop.maxThreadsPerMultiProcessor);
   printf("             totalGlobalMem: %.2f GiB\n",gib((double)prop.totalGlobalMem));
-  printf("                  clockRate: %d kHz\n", prop.clockRate);
+  printf("               memClockRate: %d kHz\n", p.memoryClockRate);
+  printf("                memBusWidth: %d bits\n", p.memoryBusWidth);
+  printf("                  clockRate: %d kHz\n", p.clockRate);
+  printf("                l2CacheSize: %d bytes\n", p.l2CacheSize);
 
   // Device Query Section END
 }
@@ -199,17 +202,21 @@ static void bench_fma(int CUs){
   std::printf("N = %d floats (%.2f GiB output)\n", N, gib((double)bytes));
   std::printf("%10s %14s %10s %14s\n", "TPB", "Blocks", "Iters", "GFLOP/s");
 
+  hipStream_t stream;
+  HIP_CHECK(hipStreamCreate(&stream));
+
   for (int iters: iters_list) {
     for (int tpb: block_sizes) {
       for (int bpcu: blocks_per_cu){
+
         int blocks = std::max(1, CUs * bpcu);
         auto fn = [&](){
-        hipLaunchKernelGGL(fma_kernel, dim3(blocks), dim3(tpb), 0, 0, d_out, N, iters);
+        hipLaunchKernelGGL(fma_kernel, dim3(blocks), dim3(tpb), 0, stream, d_out, N, iters);
       };
 
       float ms = time_ms(fn, 80);
       HIP_CHECK(hipGetLastError());
-      HIP_CHECK(hipDeviceSynchronize());
+      HIP_CHECK(hipDeviceSynchronize(stream));
 
       double flops = (double)N * (double)iters * 2.0;
       double gflops = (flops / (ms / 1000.0)) / 1e9;
@@ -219,6 +226,7 @@ static void bench_fma(int CUs){
     }
     std::printf("\n");
   }
+  HIP_CHECK(hipStreamDestroy(stream));
   HIP_CHECK(hipFree(d_out));
   std::printf("\n");
 }
