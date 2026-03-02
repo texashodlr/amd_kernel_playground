@@ -168,6 +168,54 @@ static void bench_copy(int CUs){
   std::printf("\n");
 }
 
+static void bench_fma(int CUs){
+  std::printf("== Benchmark B: FMA loop (approx GFLOP/s) ==\n");
+  const int N = 64 * 1024 * 1024;
+  const size_t bytes = (size_t)N * sizeof(float);
+
+  ensure_reasonable_device_buffers(bytes);
+  float* d_out = nullptr;
+  HIP_CHECK(hipMalloc(&d_out, bytes));
+  // Init
+  {
+    int tpb = 256;
+    int blocks = std::max(1, CUs * 8);
+    hipLaunchKernelGGL(init_kernel, dim3(blocks), dim3(tpb), 0, 0, d_out, N, 0.0f);
+    HIP_CHECK(hipGetLastError());
+    HIP_CHECK(hipDeviceSynchronize());
+  }
+
+  const std::vector<int> block_sizes = {64, 128, 256, 512, 1024};
+  const std::vector<int> blocks_per_cu = {1, 2, 4, 8, 16};
+  const std::vector<int> iters_list = {64, 256, 1024, 4096};
+
+  std::printf("N = %d floats (%.2f GiB output)\n", N, gib((double)bytes));
+  std::printf("%10s %14s %10s %14s\n", "TPB", "Blocks", "Iters", "GFLOP/s");
+
+  for (int iters: iters_list) {
+    for (int tpb: block_sizes) {
+      for (int bpcu: blocks_per_cu){
+        int blocks = std::max(1, CUs * bpcu);
+        auto fn = [&](){
+        hipLaunchKernelGGL(fma_kernel, dim3(blocks), dim3(tpb), 0, 0, d_a, d_b, N, iters);
+      };
+
+      float ms = time_ms(fn, 80);
+      HIP_CHECK(hipGetLastError());
+      HIP_CHECK(hipDeviceSynchronize());
+
+      double flops = (double)N * (double)iters * 2.0;
+      double gflops = (flops / (ms / 1000.0)) / 1e9;
+
+      std::printf("%10d %14d %10d %14.2f\n", tpb, blocks, iters, gflops);
+      }
+    }
+    std::printf("\n");
+  }
+  HIP_CHECK(hipFree(d_out));
+  std::printf("\n");
+}
+
 int main() {
   int dev = 0;
   HIP_CHECK(hipSetDevice(dev));
@@ -183,7 +231,7 @@ int main() {
   warmup();
 
   bench_copy(CUs);
-  //bench_fma(CUs);
+  bench_fma(CUs);
 
   std::printf("Done.\n");
   return 0;

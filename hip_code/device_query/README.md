@@ -1,4 +1,4 @@
-# HIP Hello (MI300X)
+# HIP Copy and FMA Bench (MI300X)
 
 ## Build
 ```bash
