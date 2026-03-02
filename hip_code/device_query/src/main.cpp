@@ -36,10 +36,10 @@ static void print_device_props(int dev = 0){
   printf("         maxThreadsPerBlock: %d\n", prop.maxThreadsPerBlock);
   printf("maxThreadsPerMultiProcessor: %d\n", prop.maxThreadsPerMultiProcessor);
   printf("             totalGlobalMem: %.2f GiB\n",gib((double)prop.totalGlobalMem));
-  printf("               memClockRate: %d kHz\n", p.memoryClockRate);
-  printf("                memBusWidth: %d bits\n", p.memoryBusWidth);
-  printf("                  clockRate: %d kHz\n", p.clockRate);
-  printf("                l2CacheSize: %d bytes\n", p.l2CacheSize);
+  printf("               memClockRate: %d kHz\n", prop.memoryClockRate);
+  printf("                memBusWidth: %d bits\n", prop.memoryBusWidth);
+  printf("                  clockRate: %d kHz\n", prop.clockRate);
+  printf("                l2CacheSize: %d bytes\n", prop.l2CacheSize);
 
   // Device Query Section END
 }
@@ -216,7 +216,7 @@ static void bench_fma(int CUs){
 
       float ms = time_ms(fn, 80);
       HIP_CHECK(hipGetLastError());
-      HIP_CHECK(hipDeviceSynchronize(stream));
+      HIP_CHECK(hipStreamSynchronize(stream));
 
       double flops = (double)N * (double)iters * 2.0;
       double gflops = (flops / (ms / 1000.0)) / 1e9;
