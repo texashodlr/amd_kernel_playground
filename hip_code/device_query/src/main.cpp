@@ -56,18 +56,18 @@ __global__ void hello_kernel(int* out) {
 }
 
 // HIP Timing Harness
-static float time_ms(const std::function<void()>& fn, int iters = 200) {
+static float time_ms(const std::function<void()>& fn, hipStream_t stream int iters = 200) {
   hipEvent_t start{}, stop{};
   HIP_CHECK(hipEventCreate(&start));
   HIP_CHECK(hipEventCreate(&stop));
 
-  HIP_CHECK(hipDeviceSynchronize());
+  HIP_CHECK(hipStreamSynchronize(stream));
 
-  HIP_CHECK(hipEventRecord(start, nullptr));
+  HIP_CHECK(hipEventRecord(start, stream));
   for (int i = 0; i < iters; ++i) {
     fn();
   }
-  HIP_CHECK(hipEventRecord(stop, nullptr));
+  HIP_CHECK(hipEventRecord(stop, stream));
   HIP_CHECK(hipEventSynchronize(stop));
 
   float ms_total = 0.0f;
@@ -131,6 +131,7 @@ static void bench_copy(int CUs){
   std::printf("== Benchmark A: Streaming copy (GB/s) ==\n");
   const int N = 256 * 1024 * 1024;
   const size_t bytes = (size_t)N * sizeof(float);
+  hipStream_t stream{};
 
   ensure_reasonable_device_buffers(2 * bytes);
 
@@ -138,15 +139,16 @@ static void bench_copy(int CUs){
   float* d_b = nullptr;
   HIP_CHECK(hipMalloc(&d_a, bytes));
   HIP_CHECK(hipMalloc(&d_b, bytes));
+  HIP_CHECK(hipStreamCreate(&stream));
 
   //Initialization to allocate
   {
     int tpb = 256;
     int blocks = std::max(1, CUs * 8);
-    hipLaunchKernelGGL(init_kernel, dim3(blocks), dim3(tpb), 0, 0, d_a, N, 1.0f);
-    hipLaunchKernelGGL(init_kernel, dim3(blocks), dim3(tpb), 0, 0, d_b, N, 0.0f);
+    hipLaunchKernelGGL(init_kernel, dim3(blocks), dim3(tpb), 0, stream, d_a, N, 1.0f);
+    hipLaunchKernelGGL(init_kernel, dim3(blocks), dim3(tpb), 0, stream, d_b, N, 0.0f);
     HIP_CHECK(hipGetLastError());
-    HIP_CHECK(hipDeviceSynchronize());
+    HIP_CHECK(hipStreamSynchronize(stream));
   }
 
   const std::vector<int> block_sizes = {64, 128, 256, 512, 1024};
@@ -155,15 +157,17 @@ static void bench_copy(int CUs){
   std::printf("N = %d floats (%.2f GiB per buffer)\n", N, gib((double)bytes));
   std::printf("%10s %14s %14s\n", "TPB", "Blocks", "GB/s");
 
+  HIP_CHECK(hipStreamSynchronize(stream));
+
   for (int tpb : block_sizes) {
     for (int bpcu : blocks_per_cu) {
       int blocks  = std::max(1, CUs * bpcu);
       auto fn = [&](){
-        hipLaunchKernelGGL(copy_kernel, dim3(blocks), dim3(tpb), 0, 0, d_a, d_b, N);
+        hipLaunchKernelGGL(copy_kernel, dim3(blocks), dim3(tpb), 0, stream, d_a, d_b, N);
       };
-      float ms = time_ms(fn, /*iters=*/30);
+      float ms = time_ms(fn, stream,/*iters=*/30);
       HIP_CHECK(hipGetLastError());
-      HIP_CHECK(hipDeviceSynchronize());
+      HIP_CHECK(hipStreamSynchronize(stream));
 
       // Minimum traffic assumption: 8 bytes per element (read+write float).
       double bytes_moved = (double)N * 8.0;
@@ -172,7 +176,7 @@ static void bench_copy(int CUs){
       std::printf("%10d %14d %14.2f\n", tpb, blocks, gbps);
     }
   }
-
+  HIP_CHECK(hipStreamDestroy(stream));
   HIP_CHECK(hipFree(d_a));
   HIP_CHECK(hipFree(d_b));
   std::printf("\n");
@@ -180,6 +184,9 @@ static void bench_copy(int CUs){
 
 static void bench_fma(int CUs){
   std::printf("== Benchmark B: FMA loop (approx GFLOP/s) ==\n");
+  hipStream_t stream{};
+  HIP_CHECK(hipStreamCreate(&stream));
+
   const int N = 64 * 1024 * 1024;
   const size_t bytes = (size_t)N * sizeof(float);
 
@@ -190,9 +197,9 @@ static void bench_fma(int CUs){
   {
     int tpb = 256;
     int blocks = std::max(1, CUs * 8);
-    hipLaunchKernelGGL(init_kernel, dim3(blocks), dim3(tpb), 0, 0, d_out, N, 0.0f);
+    hipLaunchKernelGGL(init_kernel, dim3(blocks), dim3(tpb), 0, stream, d_out, N, 0.0f);
     HIP_CHECK(hipGetLastError());
-    HIP_CHECK(hipDeviceSynchronize());
+    HIP_CHECK(hipStreamSynchronize(stream));
   }
 
   const std::vector<int> block_sizes = {64, 128, 256, 512, 1024};
@@ -202,9 +209,7 @@ static void bench_fma(int CUs){
   std::printf("N = %d floats (%.2f GiB output)\n", N, gib((double)bytes));
   std::printf("%10s %14s %10s %14s\n", "TPB", "Blocks", "Iters", "GFLOP/s");
 
-  hipStream_t stream;
-  HIP_CHECK(hipStreamCreate(&stream));
-
+  HIP_CHECK(hipStreamSynchronize(stream));
   for (int iters: iters_list) {
     for (int tpb: block_sizes) {
       for (int bpcu: blocks_per_cu){
@@ -214,7 +219,7 @@ static void bench_fma(int CUs){
         hipLaunchKernelGGL(fma_kernel, dim3(blocks), dim3(tpb), 0, stream, d_out, N, iters);
       };
 
-      float ms = time_ms(fn, 80);
+      float ms = time_ms(fn, stream, 80);
       HIP_CHECK(hipGetLastError());
       HIP_CHECK(hipStreamSynchronize(stream));
 
