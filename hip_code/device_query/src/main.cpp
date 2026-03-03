@@ -56,7 +56,7 @@ __global__ void hello_kernel(int* out) {
 }
 
 // HIP Timing Harness
-static float time_ms(const std::function<void()>& fn, hipStream_t stream int iters = 200) {
+static float time_ms(const std::function<void()>& fn, hipStream_t stream, int iters=200) {
   hipEvent_t start{}, stop{};
   HIP_CHECK(hipEventCreate(&start));
   HIP_CHECK(hipEventCreate(&stop));
@@ -64,9 +64,7 @@ static float time_ms(const std::function<void()>& fn, hipStream_t stream int ite
   HIP_CHECK(hipStreamSynchronize(stream));
 
   HIP_CHECK(hipEventRecord(start, stream));
-  for (int i = 0; i < iters; ++i) {
-    fn();
-  }
+  for (int i = 0; i < iters; ++i) fn();
   HIP_CHECK(hipEventRecord(stop, stream));
   HIP_CHECK(hipEventSynchronize(stop));
 
@@ -90,7 +88,7 @@ __global__ void copy_kernel(const float* __restrict__ a,
 
 // Kernel #2: Compute Heavy Kernel
 __global__ void fma_kernel(float* out, int n, int iters){
-  int i = blockIdx.x * blockDim.x * threadIdx.x;
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n){
     float x = (float)i * 0.000001f + 1.0f;
     float a = 1.000001f;
