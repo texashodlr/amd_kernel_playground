@@ -88,11 +88,13 @@ __global__ void copy_kernel(const float* __restrict__ a,
 
 // Kernel #2: Compute Heavy Kernel
 __global__ void fma_kernel(float* out, int n, int iters){
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i < n){
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+  
+  const float a = 1.000001f;
+  const float b = 0.000001f;
+  for (int i = tid; i < n; i += stride){
     float x = (float)i * 0.000001f + 1.0f;
-    float a = 1.000001f;
-    float b = 0.000001f;
   #pragma unroll 4
     for (int k = 0; k < iters; ++k){
       x = x * a + b;
@@ -169,7 +171,7 @@ static void bench_copy(int CUs){
 
       // Minimum traffic assumption: 8 bytes per element (read+write float).
       double bytes_moved = (double)N * 8.0;
-      double gbps = (bytes_moved / (ms / 1000.0)) / 1e9;
+      double gbps = (bytes_moved / (ms / 1000.0)) / 1000000000;
 
       std::printf("%10d %14d %14.2f\n", tpb, blocks, gbps);
     }
@@ -217,7 +219,7 @@ static void bench_fma(int CUs){
         hipLaunchKernelGGL(fma_kernel, dim3(blocks), dim3(tpb), 0, stream, d_out, N, iters);
       };
 
-      float ms = time_ms(fn, stream, 80);
+      float ms = time_ms(fn, stream, iters);
       HIP_CHECK(hipGetLastError());
       HIP_CHECK(hipStreamSynchronize(stream));
 
