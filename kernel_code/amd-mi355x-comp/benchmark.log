@@ -1,0 +1,24 @@
+bs=  4 kv=1024  latency=  231.88 us
+bs=  4 kv=2048  latency=  229.90 us
+bs=  4 kv=4096  latency=  228.56 us
+bs=  4 kv=8192  latency=  227.74 us
+bs= 16 kv=1024  latency=  233.40 us
+bs= 16 kv=2048  latency=  234.34 us
+bs= 16 kv=4096  latency=  236.77 us
+bs= 16 kv=8192  latency=  236.74 us
+bs= 32 kv=1024  latency=  238.27 us
+bs= 32 kv=2048  latency=  235.49 us
+bs= 32 kv=4096  latency=  234.87 us
+bs= 32 kv=8192  latency=  253.06 us
+bs= 64 kv=1024  latency=  236.75 us
+bs= 64 kv=2048  latency=  236.21 us
+bs= 64 kv=4096  latency=  237.06 us
+bs= 64 kv=8192  latency=  271.51 us
+bs=128 kv=1024  latency=  235.21 us
+bs=128 kv=2048  latency=  243.66 us
+bs=128 kv=4096  latency=  296.40 us
+bs=128 kv=8192  latency=  384.97 us
+bs=256 kv=1024  latency=  298.99 us
+bs=256 kv=2048  latency=  345.99 us
+bs=256 kv=4096  latency=  439.01 us
+bs=256 kv=8192  latency=  607.13 us
