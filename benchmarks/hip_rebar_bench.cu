@@ -30,7 +30,7 @@ static void check_rebar(int device_id) {
     int rebar_enabled = 0;
     
     CHECK_HIP(hipDeviceGetAttribute(&rebar_support, 
-        hipDeviceAttributeResizableBar, device_id));
+        hipDeviceAttributeIsLargeBar, device_id));
     
     // Check if memory space is actually available (indicates enabled)
     size_t free_mem, total_mem;
@@ -61,13 +61,13 @@ static void check_unified_memory(int device_id) {
     printf("=== Unified Memory Check ===\n");
     
     void *um_ptr;
-    hipError_t err = hipMallocManaged(&um_ptr, 256 * 1024 * 1024, hipMallocManagedDefault);
+    hipError_t err = hipMallocManaged(&um_ptr, 256 * 1024 * 1024);
     
     if (err == hipSuccess) {
         printf("Managed memory (256MB): Success\n");
         
         // Touch the memory to trigger allocation
-        memset(um_ptr, 0x42, 256 * 1024 * 1024);
+        hipMemset(um_ptr, 0x42, 256 * 1024 * 1024);
         hipDeviceSynchronize();
         printf("Managed memory write: Success\n");
         
@@ -122,7 +122,7 @@ static void run_bidirectional_test(size_t size, int iterations, const char *size
     // Run concurrent transfers
     double h2d_total = 0, d2h_total = 0;
     for (int iter = 0; iter < iterations; iter++) {
-        memset(h_pinned, iter, size);
+        hipMemset(h_pinned, iter, size);
         
         pthread_t t1, t2;
         transfer_args_t a1 = {h_pinned, d_ptr, size, 1, 0, 0};
@@ -178,7 +178,7 @@ static void run_unidirectional_tests(int iterations) {
 
     for (int i = 0; i < num_sizes; i++) {
         size_t size = sizes[i];
-        memset(h_pinned, 0, size);
+        hipMemset(h_pinned, 0, size);
 
         double start = get_time_ms();
         for (int iter = 0; iter < iterations; iter++) {
