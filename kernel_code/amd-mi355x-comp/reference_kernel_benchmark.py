@@ -22,7 +22,7 @@ CASES = [
     (64, 8192),
     (128, 1024),
     (128, 2048),
-    (128 4096),
+    (128, 4096),
     (128, 8192),
     (256, 1024),
     (256, 2048),
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     reference.Q_DTYPE = "fp8"
     reference.KV_DTYPE = "fp8"
-
+    print(f"bs,kv,latency")
     for bs, kv in CASES:
         us = run_case(bs, kv)
-        print(f"bs={bs:3d} kv={kv:4d}  latency={us:8.2f} us")
+        print(f"{bs:3d},{kv:4d},{us:8.2f}")
