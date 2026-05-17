@@ -2,7 +2,6 @@
 // Compile: hipcc -o host_device_bw host_device_bw.cu -lpthread
 // Run: ./host_device_bw [iterations] [device_id]
 
-#define _GNU_SOURCE
 #include <hip/hip_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,12 +35,12 @@ static int check_numa(){
         printf("NUMA isn't available.\n");
         return -1;
     }
-    int cpu, node;
+    unsigned int cpu, node;
     if (getcpu(&cpu, &node) == 0){
         printf("Current CPU: %d, Current NUMA Node: %d\n", cpu, node);
     }
     int max_numa = numa_max_node();
-    printf("Max NUMA node: %d\n",max_node);
+    printf("Max NUMA node: %d\n",max_numa);
 
     return 0;
 }
@@ -122,7 +121,7 @@ static void check_rebar(int device_id) {
             hipFree(device_buffer);
 
             hipHostUnregister(host_buffer);
-            numa_free(host_buffer);
+            numa_free(host_buffer, host_byte_size);
         }
     }
     hipEventDestroy(start);
@@ -291,22 +290,135 @@ static void run_unidirectional_tests(int iterations) {
     printf("\n");
 }
 
-int main(int argc, char *argv[]) {
-    int iterations = (argc > 1) ? atoi(argv[1]) : 100;
-    int device_id = (argc > 2) ? atoi(argv[2]) : 0;
+static void check_peer_access(int device_id, int peer_device_id){
+    printf("=== GPU Peer Access Check === \n");
+
+    int can_access = 0;
+    hipError_t err = hipDeviceCanAccessPeer(&can_access, device_id, peer_device_id);
+
+    if (err != hipSuccess){
+        printf("Peer access query failed: %s\n", hipGetErrorString(err));
+        return;
+    }
+
+    printf("Device %d -> Device %d peer access: %s\n",
+        device_id, peer_device_id, can_access ? "Yes" : "No");
+    if (!can_access){
+        printf("Peer transfers not available ReBAR may be disabled!\n");
+        return;
+    }
+
+    // Enabling peer access
+    CHECK_HIP(hipDeviceEnablePeerAccess(peer_device_id, 0));
+
+    // Allocate on both devices
+    size_t size = 256 * 1024 * 1024;
+    void d_src, d_dst;
+    CHECK_HIP(hipSetDevice(device_id));
+    CHECK_HIP(hipMalloc(&d_src, size));
+    CHECK_HIP(hipSetDevice(peer_device_id));
+    CHECK_HIP(hipMalloc(&d_dst, size));
+
+    // Initialize source
+    CHECK_HIP(hipSetDevice(device_id));
+    CHECK_HIP(hipMemset(d_src, 0x42, size));
+
+    // Peer transfer timing
+    float ms;
+    hipEvent_t start, stop;
+    hipEventCreate(&start);
+    hipEventCreate(&stop);
+
+    hipEventRecord(start, 0);
+    CHECK_HIP(hipMemcpy(d_dst, d_src, size, hipMemcpyDeviceToDevice));
+    hipEventRecord(stop, 0);
+    hipEventSynchronize(stop);
+    hipEventElapsedTime(&ms, start, stop);
+
+    double bw_gbps = (size / (1024 * 1024 * 1024)) / (ms / 1000.0);
+    printf("Peer transfer (256MB): %.2f GB/s\n", bw_gbps);
+
+    // Cleanup
+    hipEventDestroy(start);
+    hipEventDestroy(stop);
+    hipSetDevice(device_id);
+    hipFree(d_src);
+    hipSetDevice(peer_device_id);
+    hipFree(d_dst);
+    hipDeviceDisablePeerAccess(peer_device_id);
+
+    printf("\n");
+}
+
+static void check_internal_bw(int device_id){
+    printf("=== Internal GPU Bandwidth (HBM->HBM) ===\n");
 
     CHECK_HIP(hipSetDevice(device_id));
 
-    hipDeviceProp_t prop;
-    CHECK_HIP(hipGetDeviceProperties(&prop, device_id));
-    printf("GPU: %s\n", prop.name);
+    size_t sizes[] = {16 * 1024 * 1024, 64 * 1024 * 1024, 256 * 1024 * 1024};
+    const char *labels[] = {"16MB", "64MB", "256MB"};
+
+    printf("%12s  %12s  %12s\n", "Size", "Time (ms)", "Bandwidth (GB/s)");
+    printf("%12s  %12s  %12s\n", "------", "------", "------");
+
+    hipEvent_t start, stop;
+    hipEventCreate(&start);
+    hipEventCreate(&stop);
+
+    for (int i = 0; i < 3; i++) {
+        size_t size = sizes[i];
+
+        void d_src, d_dst;
+        CHECK_HIP(hipMalloc(&d_src, size));
+        CHECK_HIP(hipMalloc(&d_dst, size));
+
+        // Warmup
+        CHECK_HIP(hipMemcpy(d_dst, d_src, size, hipMemcpyDeviceToDevice));
+
+        // Timed transfer
+        float ms;
+        hipEventRecord(start, 0);
+        CHECK_HIP(hipMemcpy(d_dst, d_src, size, hipMemcpyDeviceToDevice));
+        hipEventRecord(stop, 0);
+        hipEventSynchronize(stop);
+        hipEventElapsedTime(&ms, start, stop);
+
+        double bw_gbps = (size / (1024*1024*1024)) / (ms / 1000.0);
+        printf("%12s  %12.3f  %12.2f\n", labels[i], ms, bw_gbps);
+
+        hipFree(d_src);
+        hipFree(d_dst);
+    }
+
+    hipEventDestroy(start);
+    hipEventDestroy(stop);
+    printf("\n");
+}
+
+
+int main(int argc, char *argv[]) {
+    int iterations = (argc > 1) ? atoi(argv[1]) : 100;
+    int device_id = (argc > 2) ? atoi(argv[2]) : 0;
+    int peer_device_id = (argc > 3) ? atoi(argv[3]) : 1;
+
+    CHECK_HIP(hipSetDevice(device_id));
+    CHECK_HIP(hipSetDevice(peer_device_id));
+
+    hipDeviceProp_t prop_1, prop_2;
+    CHECK_HIP(hipGetDeviceProperties(&prop_1, device_id));
+    CHECK_HIP(hipGetDeviceProperties(&prop_2, peer_device_id));
+    printf("Peer 1 GPU: %s\n", prop_1.name);
+    printf("Peer 2 GPU: %s\n", prop_2.name);
     printf("=====================================\n\n");
 
     check_rebar(device_id);
     check_unified_memory(device_id);
+    check_peer_access(device_id, peer_device_id);
+    check_internal_bw(device_id);
     run_unidirectional_tests(iterations);
     run_bidirectional_test(16 * 1024 * 1024, iterations, "16MB");
     run_bidirectional_test(256 * 1024 * 1024, iterations, "256MB");
+
 
     printf("Done.\n");
     return 0;
