@@ -30,7 +30,7 @@ static double get_time_ms() {
 }
 
 static int check_numa(){
-    
+
     if (numa_available() < 0){
         printf("NUMA isn't available.\n");
         return -1;
@@ -81,7 +81,7 @@ static void check_rebar(int device_id) {
             printf("Large allocation (%dMB): Failed - %s\n",byte_size , hipGetErrorString(err));
         }
     }
-    
+
     // HIP Timing harness
     float ms;
     hipEvent_t start, stop;
@@ -93,9 +93,9 @@ static void check_rebar(int device_id) {
     for(int numa_node = 0; numa_node <= max_node; numa_node++){
         printf("Testing NUMA node %d...\n", numa_node);
         numa_run_on_node(numa_node); // Pin thread to NUMA node
-        
+
         for(int i = 2; i < 11; i++){
-            
+
             int byte_size = pow(2,i);
             size_t host_byte_size = byte_size * 1024 * 1024;
 
@@ -319,7 +319,7 @@ static void check_peer_access(int device_id, int peer_device_id){
     CHECK_HIP(hipDeviceEnablePeerAccess(peer_device_id, 0));
 
     // Allocate on both devices
-    size_t size = 256 * 1024 * 1024;
+    size_t size = 16 * 1024 * 1024;
     void *d_src, *d_dst;
     CHECK_HIP(hipSetDevice(device_id));
     CHECK_HIP(hipMalloc(&d_src, size));
@@ -342,9 +342,8 @@ static void check_peer_access(int device_id, int peer_device_id){
     hipEventSynchronize(stop);
     hipEventElapsedTime(&ms, start, stop);
 
-    double bw_gbps = (size / (1024 * 1024 * 1024)) / (ms / 1000.0);
-    printf("Peer transfer (256MB): %.2f GB/s\n", bw_gbps);
-
+    double bw_gbps = (size / (1024.0 * 1024 * 1024)) / (ms / 1000.0);
+    printf("Peer transfer (256MB): %.5f GB/s\nTotal Time: %.5f\n", bw_gbps, ms);
     // Cleanup
     hipEventDestroy(start);
     hipEventDestroy(stop);
@@ -448,6 +447,9 @@ int main(int argc, char *argv[]) {
     run_unidirectional_tests(iterations);
     run_bidirectional_test(16 * 1024 * 1024, iterations, "16MB");
     run_bidirectional_test(256 * 1024 * 1024, iterations, "256MB");
+    run_bidirectional_test(512 * 1024 * 1024, iterations, "512MB");
+    run_bidirectional_test(1024 * 1024 * 1024, iterations, "1GB");
+    run_bidirectional_test(4096 * 1024 * 1024, iterations, "4GB");
 
 
     printf("Done.\n");
