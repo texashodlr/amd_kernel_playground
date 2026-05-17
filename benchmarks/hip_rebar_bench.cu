@@ -313,7 +313,7 @@ static void check_peer_access(int device_id, int peer_device_id){
 
     // Allocate on both devices
     size_t size = 256 * 1024 * 1024;
-    void d_src, d_dst;
+    void *d_src, *d_dst;
     CHECK_HIP(hipSetDevice(device_id));
     CHECK_HIP(hipMalloc(&d_src, size));
     CHECK_HIP(hipSetDevice(peer_device_id));
@@ -350,6 +350,27 @@ static void check_peer_access(int device_id, int peer_device_id){
     printf("\n");
 }
 
+static int check_onboard_gpus(){
+    int deviceCount = 0;
+    hipError_t status = hipGetDeviceCount(&deviceCount);
+
+    if (status != hipSuccess) {
+        std::cerr << "HIP Error: " << hipGetErrorString(status) << std::endl;
+        return 1;
+    }
+
+    std::cout << "Number of compute-capable devices: " << deviceCount << std::endl;
+
+    // Loop through all available devices
+    for (int i = 0; i < deviceCount; ++i) {
+        hipDeviceProp_t props;
+        hipGetDeviceProperties(&props, i);
+        std::cout << "Device " << i << ": " << props.name << std::endl;
+    }
+
+    return 0;
+}
+
 static void check_internal_bw(int device_id){
     printf("=== Internal GPU Bandwidth (HBM->HBM) ===\n");
 
@@ -368,7 +389,7 @@ static void check_internal_bw(int device_id){
     for (int i = 0; i < 3; i++) {
         size_t size = sizes[i];
 
-        void d_src, d_dst;
+        void *d_src, *d_dst;
         CHECK_HIP(hipMalloc(&d_src, size));
         CHECK_HIP(hipMalloc(&d_dst, size));
 
@@ -383,7 +404,7 @@ static void check_internal_bw(int device_id){
         hipEventSynchronize(stop);
         hipEventElapsedTime(&ms, start, stop);
 
-        double bw_gbps = (size / (1024*1024*1024)) / (ms / 1000.0);
+        double bw_gbps = (size / (1024 * 1024 * 1024)) / (ms / 1000.0);
         printf("%12s  %12.3f  %12.2f\n", labels[i], ms, bw_gbps);
 
         hipFree(d_src);
