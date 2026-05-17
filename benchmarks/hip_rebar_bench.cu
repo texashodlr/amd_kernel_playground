@@ -355,17 +355,17 @@ static int check_onboard_gpus(){
     hipError_t status = hipGetDeviceCount(&deviceCount);
 
     if (status != hipSuccess) {
-        std::cerr << "HIP Error: " << hipGetErrorString(status) << std::endl;
+        printf("HIP Error: %s\n", hipGetErrorString(status));
         return 1;
     }
 
-    std::cout << "Number of compute-capable devices: " << deviceCount << std::endl;
+    printf("Number of compute-capable devices: %d\n", deviceCount);
 
     // Loop through all available devices
     for (int i = 0; i < deviceCount; ++i) {
         hipDeviceProp_t props;
         hipGetDeviceProperties(&props, i);
-        std::cout << "Device " << i << ": " << props.name << std::endl;
+        printf("Device %d --> %s\n", i, props.name);
     }
 
     return 0;
@@ -432,6 +432,7 @@ int main(int argc, char *argv[]) {
     printf("Peer 2 GPU: %s\n", prop_2.name);
     printf("=====================================\n\n");
 
+    check_onboard_gpus();
     check_rebar(device_id);
     check_unified_memory(device_id);
     check_peer_access(device_id, peer_device_id);
