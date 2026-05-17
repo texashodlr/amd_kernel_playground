@@ -301,12 +301,19 @@ static void check_peer_access(int device_id, int peer_device_id){
         return;
     }
 
+    int deviceCount;
+    hipGetDeviceCount(&deviceCount);
+    printf("Total GPUs available %d", deviceCount);
+
     printf("Device %d -> Device %d peer access: %s\n",
         device_id, peer_device_id, can_access ? "Yes" : "No");
     if (!can_access){
         printf("Peer transfers not available ReBAR may be disabled!\n");
         return;
     }
+
+    // Setting current device before peer access
+    CHECK_HIP(hipSetDevice(device_id));
 
     // Enabling peer access
     CHECK_HIP(hipDeviceEnablePeerAccess(peer_device_id, 0));
@@ -351,6 +358,7 @@ static void check_peer_access(int device_id, int peer_device_id){
 }
 
 static int check_onboard_gpus(){
+    printf("=== Onboard GPU Check === \n");
     int deviceCount = 0;
     hipError_t status = hipGetDeviceCount(&deviceCount);
 
