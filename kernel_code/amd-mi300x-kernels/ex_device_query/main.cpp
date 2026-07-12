@@ -65,7 +65,8 @@ void print_device_properties(int device_id)
     // Print a small set of all available properties. A full list can be found at:
     // https://rocm.docs.amd.com/projects/HIP/en/latest/doxygen/html/structhip_device_prop__t.html
     std::cout << std::setw(col_w) << "Name: " << props.name << '\n';
-    //std::cout << std::setw(col_w) << "UUID: " << props.uuid << '\n';
+    std::cout << std::setw(col_w) << "UUID: " << std:: string(props.uuid.bytes, 16) << '\n';
+    
     std::cout << std::setw(col_w) << "pciBusID: " << props.pciBusID << '\n';
     std::cout << std::setw(col_w) << "pciDeviceID: " << props.pciDeviceID << '\n';
     std::cout << std::setw(col_w) << "pciDomainID: " << props.pciDomainID << '\n';
