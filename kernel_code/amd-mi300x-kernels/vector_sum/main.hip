@@ -9,6 +9,39 @@
 
 #include <cstddef>
 
+__global__ void vector_sum_kernel_v1(const float* a, float* b, const unsigned int size){
+    const unsigned int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    int base_offset = static_cast<int>(__log2f(size));
+    
+    if (global_idx < size)
+    {
+        unsigned int local_size = size;
+        for (int i = base_offset; i > 0 ; --i){
+            int stride = 1 << (i - 1);
+            if (i == base_offset){
+                if ((global_idx + stride) < local_size){
+                    b[global_idx] = a[global_idx] + a[global_idx + stride];
+                    //printf("Thread: %u | Value: %f = %f + %F\n",global_idx, b[global_idx], a[global_idx], a[global_idx+stride]);
+                }
+                else {
+                    b[global_idx] = a[global_idx];
+                    //printf("Thread: %u | Value: %f \n",global_idx, b[global_idx]);
+                }
+            }
+            else{
+                if ((global_idx + stride) < local_size){
+                    b[global_idx] = b[global_idx] + b[global_idx + stride];
+                  //  printf("Thread: %u | Value: %f = %f + %F\n",global_idx, b[global_idx], b[global_idx], b[global_idx+stride]);
+                }
+                //printf("IDX: %u | Stride: %d | localsize: %u\n", global_idx, stride, local_size);
+            }
+            __syncthreads();
+            local_size = local_size/2;
+        }
+    }
+}
+
 __global__ void vector_sum_kernel_naive(const float* a, const float* b, float* c, const unsigned int size){
     const unsigned int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -25,12 +58,21 @@ __global__ void vector_sum_kernel_naive(const float* a, const float* b, float* c
     }
 }
 
-bool validate_vector_sum_kernel(const float* host_a, const float* host_b, const float* gpu_c, unsigned int size){
+bool validate_vector_sum_kernel(const float* host_a, const float* gpu_c, unsigned int size){
     constexpr float epsilon = 1e-5f;
-    float cpu_res = 0.0;
-    for (unsigned int i = 0; i < size; ++i){
-        cpu_res += host_a[i] + host_b[i];
+
+    float cpu_res = 0.0f;
+    
+    std::cout << "--GPU--\n";
+    for (unsigned int i = 0; i < size; ++i) {
+        //std::cout <<  "Index " << i << ": GPU: " << gpu_c[i] << " CPU: " << host_a[i] << "\n";
+    } 
+
+    // A simple, sequential CPU loop for reduction
+    for (unsigned int i = 0; i < size; ++i) {
+        cpu_res += host_a[i];
     }
+
     if (std::fabs(cpu_res - gpu_c[0]) > epsilon) {
         std::cerr << "\n[FAIL] Mismatch found at index " << "0" << "!\n"
                     << "  CPU Calc:  " << cpu_res << "\n"
@@ -57,21 +99,18 @@ int main(){
     {"size":52428800}
     */
 
-    constexpr unsigned int sizes[6] = {1638400, 3276800, 6553600, 13107200, 26214400, 52428800};
+    constexpr unsigned int sizes[6] = {256, 3276800, 6553600, 13107200, 26214400, 52428800};
 
     constexpr size_t max_size = sizes[5] * sizeof(float);
 
     float *d_A = nullptr;
     float *d_B = nullptr;
-    float *d_C = nullptr;
 
     HIP_CHECK(hipMalloc(&d_A, max_size));
     HIP_CHECK(hipMalloc(&d_B, max_size));
-    HIP_CHECK(hipMalloc(&d_C, max_size));
 
     std::vector<float> h_A(max_size);
     std::vector<float> h_B(max_size);
-    std::vector<float> h_C(max_size);
 
     // Psuedo random generator
     rocrand_generator prng;
@@ -98,14 +137,14 @@ int main(){
         unsigned int rngSize = (currentSize % 2 == 0) ? currentSize: currentSize + 1;
 
         rocrand_generate_normal(prng, d_A, rngSize, 0.0f, 1.0f);
-        rocrand_generate_normal(prng, d_B, rngSize, 0.0f, 1.0f);
+        //rocrand_generate_normal(prng, d_B, rngSize, 0.0f, 1.0f);
 
         int threadsPerBlock = 256;
         int blocksPerGrid = (currentSize + threadsPerBlock - 1) / threadsPerBlock;
 
         HIP_CHECK(hipEventRecord(start, nullptr));
 
-        vector_sum_kernel_naive<<<dim3(blocksPerGrid), dim3(threadsPerBlock), 0, hipStreamDefault>>>(d_A, d_B, d_C, currentSize);
+        vector_sum_kernel_v1<<<dim3(blocksPerGrid), dim3(threadsPerBlock), 0, hipStreamDefault>>>(d_A, d_B, currentSize);
 
         HIP_CHECK(hipEventRecord(stop, nullptr));
         HIP_CHECK(hipEventSynchronize(stop));
@@ -115,9 +154,8 @@ int main(){
         // Validation of GPU kernel
         HIP_CHECK(hipMemcpy(h_A.data(), d_A, currentSize*sizeof(float), hipMemcpyDeviceToHost));
         HIP_CHECK(hipMemcpy(h_B.data(), d_B, currentSize*sizeof(float), hipMemcpyDeviceToHost));
-        HIP_CHECK(hipMemcpy(h_C.data(), d_C, currentSize*sizeof(float), hipMemcpyDeviceToHost));
 
-        bool pass = validate_vector_sum_kernel(h_A.data(), h_B.data(), h_C.data(), currentSize);
+        bool pass = validate_vector_sum_kernel(h_A.data(), h_B.data(), currentSize);
 
         std::cout << std::left << std::setw(15) << currentSize 
                   << std::setw(15) << std::fixed << std::setprecision(2) << sizeInMB * 3 // Total data for 3 arrays
@@ -134,7 +172,6 @@ int main(){
     HIP_CHECK(hipEventDestroy(stop));
     HIP_CHECK(hipFree(d_A));
     HIP_CHECK(hipFree(d_B));
-    HIP_CHECK(hipFree(d_C));
 
     std::cout << "\nHarness execution comlete. Resources freed safely. \n";
     return 0;
